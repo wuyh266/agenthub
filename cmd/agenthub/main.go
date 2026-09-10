@@ -9,6 +9,7 @@ import (
 	"github.com/wuyh266/agenthub/internal/agent"
 	"github.com/wuyh266/agenthub/internal/llm"
 	"github.com/wuyh266/agenthub/internal/tool"
+	"github.com/wuyh266/agenthub/internal/tool/imageprocessing"
 	"github.com/wuyh266/agenthub/internal/tool/mock"
 )
 
@@ -18,9 +19,13 @@ func main() {
 		panic("GLM_APIKEY environment variable is not set")
 	}
 	llmClient := llm.NewGLMClient(apikey)
-	tools := []tool.Tool{mock.Echo{}}
+	tools := []tool.Tool{mock.Echo{}, imageprocessing.NewImageScaling("http://localhost:8080/resize")} 
 	a := agent.NewAgent(llmClient, tools, 5)
-	question := "请使用 echo 工具返回 'Hello, World!'"
+	question:="使用Echo工具返回一个 hello world"
+	if len(os.Args)>1{
+		question = os.Args[1]
+	}
+	
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	answer, err := a.Run(ctx, question)
