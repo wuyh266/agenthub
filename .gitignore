@@ -1,22 +1,22 @@
- ── 编译产物 ──
-      /agenthub
-      /traceserver
-      *.exe
-      *.test
-      *.out
-      coverage.*
+# ── 编译产物 ──
+/agenthub
+/traceserver
+*.exe
+*.test
+*.out
+coverage.*
 
-    ── 凭据 / 本地配置 ──
-      .env
-      .env.*
-      picture/
+# ── 凭据 / 本地配置 ──
+.env
+.env.*
+picture/
 
-    ── 编辑器 / 系统 ──
-      .idea/
-      .vscode/
-      Thumbs.db
-      desktop.ini
+# ── 编辑器 / 系统 ──
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini
 
-    ── 运行期产物（W3 的 trace 服务会用）──
-      /data/
-      /logs/
+# ── 运行时产物（W3 的 trace 服务会用）──
+/data/
+/logs/
