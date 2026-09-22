@@ -13,20 +13,32 @@ func (d Decision) IsFinal() bool {
 }
 
 func Parse(output string) Decision {
+	output = strings.ReplaceAll(output, "：", ":")
 	decision := Decision{}
-	for _, line := range strings.Split(output, "\n") {
+	lines := strings.Split(output, "\n")
+	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		key, value, found := strings.Cut(line, ":")
 		if !found {
 			continue
 		}
-		switch strings.TrimSpace(key) {
+		switch strings.Trim(strings.TrimSpace(key), "*") {
 		case "Action":
 			decision.ToolName = strings.TrimSpace(value)
 		case "Action Input":
-			decision.Input = strings.TrimSpace(value)
+			inputLines := append(
+				[]string{strings.TrimSpace(value)},
+				lines[i+1:]...,
+			)
+			decision.Input = strings.TrimSpace(strings.Join(inputLines, "\n"))
+			return decision
 		case "Final Answer":
-			decision.FinalAnswer = strings.TrimSpace(value)
+			answerLines := append(
+				[]string{strings.TrimSpace(value)},
+				lines[i+1:]...,
+			)
+			decision.FinalAnswer = strings.TrimSpace(strings.Join(answerLines, "\n"))
+			return decision
 		}
 	}
 	return decision
