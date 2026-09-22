@@ -3,28 +3,35 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wuyh266/agenthub/internal/llm"
 	"github.com/wuyh266/agenthub/internal/tool"
 )
 
 type Agent struct {
-	llm     llm.Client           // llm客户端，agent需要记住在跟谁说话
-	tools   map[string]tool.Tool // 工具表，key是工具名，value是工具实例。agent需要记住有哪些工具可以调用
-	maxLoop int                  // 最大循环次数。agent需要记住自己最多能循环多少次
+	llm      llm.Client           // llm客户端，agent需要记住在跟谁说话
+	tools    map[string]tool.Tool // 工具表，key是工具名，value是工具实例。agent需要记住有哪些工具可以调用
+	maxLoop  int                  // 最大循环次数。agent需要记住自己最多能循环多少次
+	observer Observer             //用来记录ReAct的运行trace
 }
 
 // NewAgent 创建一个新的 Agent 实例。它接收一个 llm.Client、一个工具列表和最大循环次数作为参数，并返回一个指向 Agent 的指针。
-func NewAgent(llm llm.Client, tools []tool.Tool, maxLoop int) *Agent {
+func NewAgent(llm llm.Client, tools []tool.Tool, maxLoop int, observer Observer) *Agent {
+	if observer == nil {
+		observer = NopObserver{}
+	}
 	toolMap := make(map[string]tool.Tool)
 	for _, t := range tools {
 		toolMap[t.Name()] = t
 	}
 	return &Agent{
-		llm:     llm,
-		tools:   toolMap,
-		maxLoop: maxLoop,
+		llm:      llm,
+		tools:    toolMap,
+		maxLoop:  maxLoop,
+		observer: observer,
 	}
 }
 
@@ -60,7 +67,12 @@ func (a *Agent) Run(ctx context.Context, question string) (string, error) {
 		{Role: "user", Content: question},
 	}
 	for i := 0; i < a.maxLoop; i++ {
+		step := i + 1
+		llmStarted := time.Now()
 		reply, err := a.llm.Chat(ctx, messages)
+		llmElapsed := time.Since(llmStarted)
+		a.observer.OnLLMCall(step, reply, err, llmElapsed)
+
 		if err != nil {
 			return "", err
 		}
@@ -70,13 +82,28 @@ func (a *Agent) Run(ctx context.Context, question string) (string, error) {
 			return decision.FinalAnswer, nil // 这个位置就直接返回了，结束循环
 		}
 		t, ok := a.tools[decision.ToolName] // 这里用t时因为tool会覆盖import tool，tools又不准确
-		if !ok {
-			messages = append(messages, llm.Message{Role: "user", Content: "Observation: 错误：工具 \"" + decision.ToolName + "\" 不存在"})
+		if !ok {                            //工具为空时
+			toolErr := fmt.Errorf("工具 %q 不存在", decision.ToolName)
+			a.observer.OnToolCall(step, decision.ToolName, decision.Input, "", toolErr, 0)
+
+			messages = append(messages, llm.Message{Role: "user", Content: "Observation: 错误：" + toolErr.Error()})
 			continue
 		}
-		observation, err := t.Execute(ctx, decision.Input) // 这个observation是工具执行的结果，err是工具执行的错误
-		if err != nil {
-			messages = append(messages, llm.Message{Role: "user", Content: "Observation: 工具执行出错：" + err.Error()})
+
+		toolStarted := time.Now()
+		observation, toolErr := t.Execute(ctx, decision.Input) // 这个observation是工具执行的结果，err是工具执行的错误
+		toolElapsed := time.Since(toolStarted)
+		a.observer.OnToolCall(
+			step,
+			decision.ToolName,
+			decision.Input,
+			observation,
+			toolErr,
+			toolElapsed,
+		)
+
+		if toolErr != nil {
+			messages = append(messages, llm.Message{Role: "user", Content: "Observation: 工具执行出错：" + toolErr.Error()})
 			continue
 		}
 		messages = append(messages, llm.Message{Role: "user", Content: "Observation: " + observation})
