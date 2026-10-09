@@ -12,5 +12,18 @@ type Message struct {
 
 // Client 是一个语言模型客户端接口。
 type Client interface {
-	Chat(ctx context.Context, messages []Message) (string, error)
+	Chat(ctx context.Context, messages []Message) (Response, error)
+}
+
+// 记录模型接口返回的 token 用量。
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// 一次模型调用的结果.
+type Response struct {
+	Content string
+	Usage   *Usage
 }

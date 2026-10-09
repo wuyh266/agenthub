@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wuyh266/agenthub/internal/llm"
 	"github.com/wuyh266/agenthub/internal/tool"
@@ -48,6 +49,13 @@ func (a *Agent) buildPrompt() string {
 	prompt.WriteString("现在，根据用户输入开始你的回复。\n")
 	return prompt.String()
 }
+func countMessageChars(messages []llm.Message) int {
+	total := 0
+	for _, message := range messages {
+		total += utf8.RuneCountInString(message.Content)
+	}
+	return total
+}
 
 //  Run(ctx, 问题):
 //         messages = [system提示词(工具清单+规则), user(问题)]
@@ -62,16 +70,41 @@ func (a *Agent) buildPrompt() string {
 //         循环耗尽: 返回错误
 
 func (a *Agent) Run(ctx context.Context, question string) (string, error) {
+	var totalUsage llm.Usage
+	llmCalls := 0
+	usageReportedCalls := 0
+	defer func() {
+		a.observer.OnRunEnd(
+			totalUsage,
+			llmCalls,
+			usageReportedCalls,
+		)
+	}()
+
 	messages := []llm.Message{
 		{Role: "system", Content: a.buildPrompt()},
 		{Role: "user", Content: question},
 	}
 	for i := 0; i < a.maxLoop; i++ {
 		step := i + 1
-		llmStarted := time.Now()
-		reply, err := a.llm.Chat(ctx, messages)
-		llmElapsed := time.Since(llmStarted)
-		a.observer.OnLLMCall(step, reply, err, llmElapsed)
+
+		messageCount := len(messages)             //消息数量
+		inputChars := countMessageChars(messages) // 消息正文的rune总数
+
+		llmCalls++
+		llmStarted := time.Now() //模型开始计时
+		response, err := a.llm.Chat(ctx, messages)
+		reply := response.Content //模型回复，这段时间是计时中的
+
+		llmElapsed := time.Since(llmStarted) //统计回复用时
+		if response.Usage != nil {
+			usageReportedCalls++
+			totalUsage.PromptTokens += response.Usage.PromptTokens
+			totalUsage.CompletionTokens += response.Usage.CompletionTokens
+			totalUsage.TotalTokens += response.Usage.TotalTokens
+		}
+
+		a.observer.OnLLMCall(step, messageCount, inputChars, reply, response.Usage, err, llmElapsed)
 
 		if err != nil {
 			return "", err

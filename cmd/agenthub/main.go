@@ -10,6 +10,7 @@ import (
 	"github.com/wuyh266/agenthub/internal/llm"
 	"github.com/wuyh266/agenthub/internal/tool"
 	"github.com/wuyh266/agenthub/internal/tool/imageprocessing"
+	"github.com/wuyh266/agenthub/internal/tool/knowledge"
 	"github.com/wuyh266/agenthub/internal/tool/mock"
 	"github.com/wuyh266/agenthub/internal/trace"
 )
@@ -20,7 +21,10 @@ func main() {
 		panic("GLM_APIKEY environment variable is not set")
 	}
 	llmClient := llm.NewGLMClient(apiKey)
-	tools := []tool.Tool{mock.Echo{}, imageprocessing.NewImageScaling("http://localhost:8080/resize")}
+	tools := []tool.Tool{
+		mock.Echo{},
+		imageprocessing.NewImageScaling("http://localhost:8080/resize"),
+		knowledge.NewSearch("data/knowledge/after_sales.md")}
 	observer := trace.NewConsoleObserver(os.Stdout)
 
 	a := agent.NewAgent(llmClient, tools, 5, observer)
